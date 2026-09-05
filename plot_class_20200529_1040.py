@@ -1,16 +1,4 @@
-#!/usr/bin/env python3
-"""CLASS L1 quick-look plots for 2020-05-29T10:40:00 - 10:43:00 UTC.
 
-Per ch2_class_user_manual-1.pdf:
-  Energy = channel * 13.5 eV, no offset.
-  Science range ch 37-800 (0.5-10 keV); ignore ch <37 and >1112 (~15 keV).
-  L1 files are 8 s OGIP BINTABLE SPECTRUM with CHANNEL, COUNTS + header
-  geometry (MID_UTC, SAT_LAT/LON, BORE_LAT/LON, SAT_ALT, SOLARANG, ...).
-
-Outputs (default outdir plots_20200529_1040/):
-  P0_example_8s.png, P1_integrated_spectrum.png,
-  P2_lightcurves.png, P3_geometry.png
-"""
 import glob
 import os
 import re
@@ -150,8 +138,6 @@ def main():
     fig.tight_layout()
     fig.savefig(os.path.join(OUTDIR, "P2_lightcurves.png"), dpi=150)
     plt.close(fig)
-
-    # ---- P3: geometry / ground track ----
     fig, axs = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
     axs[0].plot(t, df["BORE_LAT"], "o-", ms=3, label="Boresight")
     axs[0].plot(t, df["SAT_LAT"], "s-", ms=2, alpha=0.6, label="Sub-satellite")
