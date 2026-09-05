@@ -1,0 +1,1198 @@
+% ============================================================
+% Physics-Constrained Multimodal Lunar Geochemical Retrieval
+% IIRS + CLASS-XRF Research Methodology
+% Compile with: pdflatex -> bibtex -> pdflatex -> pdflatex
+% ============================================================
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,bm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{cite}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!70!black
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible
+}
+
+\title{\textbf{Physics-Constrained Multimodal Retrieval of Lunar Elemental Ratios}\\
+\large A Research-Grade Methodology for Chandrayaan-2 IIRS and CLASS-XRF Data Fusion}
+
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Near-infrared (NIR) spectroscopy and X-ray fluorescence (XRF) provide complementary measurements of lunar composition. NIR observations from instruments such as the Chandrayaan-2 Imaging Infrared Spectrometer (IIRS) primarily constrain mineralogy, mineral chemistry, grain size, space-weathering state, and vibrational/electronic absorption features, whereas the Chandrayaan-2 Large Area Soft X-ray Spectrometer (CLASS) directly measures elemental X-ray fluorescence lines for major elements under suitable solar illumination. Consequently, elemental ratios such as Mg/Si, Al/Si, Ca/Si, and Fe/Si should not be interpreted as native NIR observables.
+
+This methodology formulates the problem as a multimodal inverse problem. IIRS spectra are converted into calibrated reflectance and then analyzed using classical absorption parameters, nonlinear radiative-transfer spectral unmixing, and physics-aware machine-learning representations. CLASS spectra are independently processed through solar-state screening, particle-background subtraction, instrumental response correction, and XRF line fitting. The two data products are subsequently harmonized in spatial scale and fused using Bayesian or physics-constrained machine-learning inference. Grain size, space weathering, mineral mixing, photometric geometry, thermal emission, calibration uncertainty, and model discrepancy are explicitly treated as nuisance or latent variables.
+
+The final data product consists of elemental ratios with uncertainty distributions, detection limits, quality flags, provenance, and validation pedigree. NIR-only products are restricted to mineral-chemical quantities such as Mg\#, Fo\#, En\#, Wo\#, modal mineral fractions, and FeO proxies. Absolute elemental ratios are reported only after calibration or fusion with CLASS-XRF and independent geochemical constraints.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Scientific Scope and Measurement Philosophy}
+% ============================================================
+
+\subsection{Problem Definition}
+
+The objective is to retrieve lunar elemental ratios from complementary hyperspectral and XRF measurements while preserving the distinction between directly measured quantities and model-dependent proxies.
+
+For the NIR measurement, the forward model is written as
+
+\begin{equation}
+\mathbf{y}_{\mathrm{NIR}}
+=
+\mathcal{F}_{\mathrm{NIR}}
+\left(
+\mathbf{m},
+\mathbf{g},
+\mathbf{w},
+\mathbf{p},
+T
+\right)
++
+\boldsymbol{\epsilon}_{\mathrm{NIR}},
+\end{equation}
+
+where $\mathbf{m}$ represents modal mineral abundances, $\mathbf{g}$ mineral chemistry, $\mathbf{w}$ space-weathering state, $\mathbf{p}$ photometric geometry, $T$ surface temperature, and $\boldsymbol{\epsilon}$ measurement noise.
+
+For CLASS-XRF,
+
+\begin{equation}
+\mathbf{y}_{\mathrm{XRF}}
+=
+\mathcal{F}_{\mathrm{XRF}}
+\left(
+\mathbf{c},
+\mathbf{G},
+\mathbf{S},
+\mathbf{B}
+\right)
++
+\boldsymbol{\epsilon}_{\mathrm{XRF}},
+\end{equation}
+
+where $\mathbf{c}$ is elemental abundance, $\mathbf{G}$ observation geometry, $\mathbf{S}$ the incident solar spectrum/state, and $\mathbf{B}$ the instrumental and particle background.
+
+The desired posterior is therefore
+
+\begin{equation}
+P
+\left(
+\mathbf{m},
+\mathbf{g},
+\mathbf{c},
+\mathbf{w}
+\mid
+\mathbf{y}_{\mathrm{NIR}},
+\mathbf{y}_{\mathrm{XRF}}
+\right).
+\end{equation}
+
+This formulation is preferable to a simple regression from NIR band parameters to elemental ratios because it explicitly represents the degeneracies inherent in reflectance spectroscopy.
+
+\subsection{Measurement Complementarity}
+
+NIR absorptions principally arise from crystal-field transitions, charge-transfer processes, and molecular vibrational overtones/combination bands. They therefore constrain mineralogical state rather than directly counting atoms.
+
+CLASS-XRF, by contrast, provides direct information on characteristic X-ray fluorescence lines. The methodological distinction is:
+
+\begin{equation}
+\boxed{
+\text{NIR} \rightarrow \text{mineralogy and mineral chemistry}
+}
+\end{equation}
+
+\begin{equation}
+\boxed{
+\text{CLASS-XRF} \rightarrow \text{elemental abundance}
+}
+\end{equation}
+
+The research problem is consequently a \emph{data-fusion inverse problem}, not merely an NIR elemental-ratio regression.
+
+% ============================================================
+\section{Data Sources and Instrument-Specific Products}
+% ============================================================
+
+\subsection{Chandrayaan-2 IIRS}
+
+IIRS data should be treated as a calibrated hyperspectral data cube rather than a collection of isolated band measurements. The operational chain should preserve the complete spectrum wherever possible.
+
+The useful spectral regimes are divided into:
+
+\begin{enumerate}[label=\alph*.]
+    \item approximately $0.8$--$2.5~\mu$m: primary mineralogical VNIR/SWIR regime;
+    \item approximately $2.5$--$3.3~\mu$m: strongly coupled mineralogical, hydration, and thermal regime;
+    \item approximately $3.3$--$5.0~\mu$m: increasingly important thermal/emissive regime.
+\end{enumerate}
+
+Recent IIRS Level-2 processing work emphasizes radiometric correction, thermal correction, apparent reflectance, standardized geometry, empirical-line correction, and validation against independent lunar observations. These steps should be reflected explicitly in the pipeline.
+
+\subsection{CLASS-XRF}
+
+CLASS measurements should be processed as event/spectrum data with explicit solar-state and particle-background quality control. Elemental inference should be based on physically modeled characteristic lines rather than simple raw count ratios.
+
+Relevant characteristic lines include Mg, Al, Si, Ca, and Fe fluorescence features. The final XRF elemental retrieval should incorporate:
+
+\begin{itemize}
+    \item detector response;
+    \item energy calibration;
+    \item line-spread function;
+    \item solar spectral state;
+    \item continuum background;
+    \item particle-induced background;
+    \item pile-up and instrumental artifacts;
+    \item fluorescence line fitting;
+    \item uncertainty in fundamental-parameter conversion.
+\end{itemize}
+
+% ============================================================
+\section{IIRS Level-1 to Level-2 Processing}
+% ============================================================
+
+\subsection{Detector and Radiometric Calibration}
+
+Starting from detector digital numbers,
+
+\begin{equation}
+DN_1
+=
+DN_{\mathrm{raw}}
+-
+D(T_{\mathrm{det}})\,t_{\mathrm{exp}}
+-
+B_{\mathrm{bias}},
+\end{equation}
+
+followed by flat-field correction,
+
+\begin{equation}
+DN_2 =
+\frac{DN_1}{F_{\mathrm{flat}}(x,\lambda)}.
+\end{equation}
+
+Bad pixels, dropouts, cosmic-ray spikes, nonlinear detector response, and saturation should be flagged rather than silently interpolated.
+
+Radiance is obtained through an instrument calibration function,
+
+\begin{equation}
+L_{\mathrm{rad}}(\lambda)
+=
+DN_2 G(\lambda),
+\end{equation}
+
+where $G(\lambda)$ incorporates the relevant calibration coefficients.
+
+\subsection{Wavelength Calibration}
+
+The wavelength solution may initially be represented as
+
+\begin{equation}
+\lambda_0(p)
+=
+a_0+a_1p+a_2p^2+\cdots,
+\end{equation}
+
+with detector temperature, optical flexure, smile, and spatially dependent wavelength offsets included in the operational calibration.
+
+The corrected spectrum may be resampled onto a common wavelength grid using a flux-preserving interpolation scheme.
+
+The residual wavelength error should be propagated:
+
+\begin{equation}
+\sigma_{\lambda,\mathrm{total}}^2
+=
+\sigma_{\lambda,\mathrm{fit}}^2
++
+\sigma_{\lambda,\mathrm{thermal}}^2
++
+\sigma_{\lambda,\mathrm{cal}}^2.
+\end{equation}
+
+\subsection{Thermal Emission Removal}
+
+For wavelengths where thermal emission becomes significant,
+
+\begin{equation}
+L_{\mathrm{obs}}
+=
+L_{\mathrm{reflected}}
++
+\epsilon(\lambda)B_\lambda(T),
+\end{equation}
+
+where $B_\lambda(T)$ is the Planck function.
+
+Thermal removal should be iterative because errors in $T$ and emissivity propagate strongly into the $2.5$--$5~\mu$m region.
+
+The retrieved temperature should therefore be treated as an inferred nuisance parameter with uncertainty rather than as an exact external quantity.
+
+\subsection{Photometric Correction}
+
+The reflectance should be normalized to a common geometry using an appropriate photometric model such as Hapke, Lommel--Seeliger, Akimov, or an empirically validated lunar disk function.
+
+\begin{equation}
+R_{\mathrm{std}}(\lambda)
+=
+\mathcal{P}
+\left[
+R_{\mathrm{obs}}(\lambda);
+i,e,g
+\rightarrow
+i_0,e_0,g_0
+\right].
+\end{equation}
+
+The photometric correction must not be assumed to remove space-weathering effects.
+
+% ============================================================
+\section{Spectral Feature Extraction}
+% ============================================================
+
+\subsection{Continuum Removal}
+
+For an absorption feature,
+
+\begin{equation}
+R_n(\lambda)
+=
+\frac{R(\lambda)}{R_c(\lambda)},
+\end{equation}
+
+where $R_c$ is a locally estimated continuum.
+
+Band depth is
+
+\begin{equation}
+BD(\lambda_c)
+=
+1-R_n(\lambda_c).
+\end{equation}
+
+Equivalent width is
+
+\begin{equation}
+EW
+=
+\int_{\lambda_1}^{\lambda_2}
+\left[1-R_n(\lambda)\right]d\lambda.
+\end{equation}
+
+Band area may be used to calculate
+
+\begin{equation}
+BAR
+=
+\frac{BA_{II}}{BA_I}.
+\end{equation}
+
+Continuum methods should include convex-hull, polynomial, and physically motivated local baselines. The difference between methods is itself a systematic uncertainty.
+
+\subsection{Classical Mineralogical Parameters}
+
+The principal parameters include
+
+\[
+\lambda_{BI},\quad
+\lambda_{BII},\quad
+BD_I,\quad
+BD_{II},\quad
+BA_I,\quad
+BA_{II},\quad
+BAR,
+\]
+
+along with albedo, continuum slope, spectral curvature, and hydration-region parameters.
+
+These quantities should be retained even when a full-spectrum machine-learning representation is subsequently used.
+
+\subsection{Full-Spectrum Representation}
+
+The complete spectrum should also be represented using methods such as:
+
+\begin{itemize}
+    \item PCA/MNF;
+    \item wavelet representations;
+    \item autoencoder embeddings;
+    \item physically constrained latent representations;
+    \item nonlinear radiative-transfer parameters.
+\end{itemize}
+
+This avoids the information loss associated with reducing every spectrum to a small number of band parameters.
+
+% ============================================================
+\section{Nonlinear Spectral Unmixing}
+% ============================================================
+
+\subsection{Motivation}
+
+Linear spectral mixing is a useful baseline, but lunar regolith is an intimate particulate mixture for which nonlinear scattering can be important. The final inversion should therefore compare linear mixing with nonlinear radiative-transfer models.
+
+A generic physical mixture model is
+
+\begin{equation}
+R_{\mathrm{model}}(\lambda)
+=
+\mathcal{H}
+\left(
+f_1,\ldots,f_N,
+D,
+\theta,
+w
+\right),
+\end{equation}
+
+where $f_j$ are modal abundances, $D$ represents grain-size parameters, $\theta$ represents photometric/radiative-transfer parameters, and $w$ represents optical maturity or space-weathering state.
+
+\subsection{Hapke/Shkuratov Inversion}
+
+The inversion minimizes
+
+\begin{equation}
+\chi^2
+=
+\sum_{\lambda}
+\frac{
+\left[
+R_{\mathrm{obs}}(\lambda)
+-
+R_{\mathrm{model}}(\lambda)
+\right]^2
+}{
+\sigma_R^2(\lambda)
+}.
+\end{equation}
+
+Constraints include
+
+\begin{equation}
+f_j\geq0,
+\end{equation}
+
+and
+
+\begin{equation}
+\sum_j f_j=1.
+\end{equation}
+
+The solution should be reported as a posterior distribution rather than as a single deterministic vector whenever computationally feasible.
+
+\subsection{Machine-Learning Surrogate}
+
+Recent research combining nonlinear Shkuratov modeling with machine learning provides a useful framework for scaling physically based inversion to large hyperspectral datasets.
+
+A surrogate model may be defined as
+
+\begin{equation}
+\mathbf{z}
+=
+NN_\theta
+\left[
+R(\lambda)
+\right],
+\end{equation}
+
+where $\mathbf{z}$ contains mineral fractions and mineral-chemical parameters.
+
+The ML model should be trained on synthetic spectra generated from the physical forward model, supplemented by laboratory and flight observations.
+
+% ============================================================
+\section{Explicit Treatment of Space Weathering and Grain Size}
+% ============================================================
+
+Space weathering should be treated as a latent variable rather than simply removed as a preprocessing nuisance.
+
+The reflectance model is therefore
+
+\begin{equation}
+R(\lambda)
+=
+F
+\left(
+\text{mineralogy},
+\text{chemistry},
+\text{grain size},
+\text{maturity},
+\text{geometry}
+\right).
+\end{equation}
+
+A useful parameter vector is
+
+\begin{equation}
+\boldsymbol{\theta}
+=
+\left[
+f_{\mathrm{ol}},
+f_{\mathrm{opx}},
+f_{\mathrm{cpx}},
+f_{\mathrm{plg}},
+Fo\#,
+En\#,
+Wo\#,
+D,
+\tau_{\mathrm{weathering}}
+\right].
+\end{equation}
+
+Inference should marginalize over $D$ and $\tau_{\mathrm{weathering}}$ rather than assuming they are known.
+
+This is essential because grain size, optical maturity, albedo, continuum slope, and absorption strength can produce degeneracies that otherwise appear as compositional trends.
+
+% ============================================================
+\section{NIR-Derived Mineral Chemistry and Proxy Products}
+% ============================================================
+
+\subsection{Olivine}
+
+Olivine composition should primarily be expressed using Fo\# or Fa\# rather than directly claiming a measured Mg/Si ratio.
+
+\begin{equation}
+Fo\#
+=
+100
+\frac{Mg}{Mg+Fe}.
+\end{equation}
+
+The conversion from spectral band position to Fo\# should be treated as a calibration relation with uncertainty, not a universal exact equation.
+
+\subsection{Pyroxene}
+
+For pyroxene, the inversion should estimate En, Fs, and Wo components where the calibration permits:
+
+\begin{equation}
+En+Fs+Wo=100.
+\end{equation}
+
+Band I and Band II centers, areas, widths, and asymmetries should be used jointly.
+
+\subsection{Feldspathic Material}
+
+Plagioclase is difficult to quantify from NIR alone because relatively Fe-poor feldspar can have weak absorptions.
+
+Consequently, NIR should report:
+
+\begin{itemize}
+    \item feldspathic probability;
+    \item modal plagioclase estimate with uncertainty;
+    \item anorthite-related classification where justified;
+    \item confidence/upper-limit flags.
+\end{itemize}
+
+Al/Si should not be treated as a direct NIR measurement.
+
+% ============================================================
+\section{Elemental-Ratio Feasibility}
+% ============================================================
+
+\begin{table}[H]
+\centering
+\caption{Recommended interpretation of NIR and CLASS observables.}
+\begin{tabular}{p{0.14\textwidth}p{0.28\textwidth}p{0.22\textwidth}p{0.23\textwidth}}
+\toprule
+Ratio & NIR information & NIR interpretation & CLASS interpretation \\
+\midrule
+Mg/Si & Olivine/pyroxene chemistry, Mg\#, Fo\#, En\# & Model-dependent proxy & Direct XRF elemental constraint \\
+Fe/Si & Band strengths, Fe-bearing mineral abundance, FeO proxy & Strongly affected by maturity and grain size & Direct XRF elemental constraint \\
+Ca/Si & Pyroxene Wo\#, HCP/LCP discrimination & Mineralogical proxy; plagioclase correction required & Direct XRF elemental constraint \\
+Al/Si & Feldspathic probability, weak Fe-bearing feldspar feature & Low-precision indirect proxy & Direct XRF elemental constraint \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+NIR-only elemental ratios should therefore be labeled explicitly as \emph{model-dependent reconstructed ratios}. True elemental ratios should be produced only after external calibration or multimodal fusion.
+
+% ============================================================
+\section{CLASS-XRF Processing}
+% ============================================================
+
+\subsection{Solar-State Screening}
+
+CLASS XRF intensity is strongly dependent on incident solar X-ray flux. Observations should therefore be classified according to solar state using contemporaneous solar-monitor information.
+
+Only observations meeting the required solar-flux and particle-background quality criteria should contribute to quantitative elemental inversion.
+
+\subsection{Energy Calibration}
+
+The detector energy scale is represented by
+
+\begin{equation}
+E(p)
+=
+b_0+b_1p+b_2p^2+\cdots,
+\end{equation}
+
+where $p$ is detector channel.
+
+Energy drift should be tracked with time and instrument state.
+
+\subsection{Line Fitting}
+
+The observed spectrum can be represented as
+
+\begin{equation}
+C(E)
+=
+B(E)
++
+\sum_k
+A_k L_k(E)
++
+P(E),
+\end{equation}
+
+where $B(E)$ is the continuum/background, $L_k(E)$ are instrument-broadened fluorescence lines, and $P(E)$ represents particle-induced components.
+
+The fitting process should return both line fluxes and their covariance matrix.
+
+\subsection{Fundamental-Parameter Inversion}
+
+Elemental abundance is inferred from the measured line intensities using a physical XRF response model,
+
+\begin{equation}
+\mathbf{F}
+=
+\mathcal{G}
+\left(
+\mathbf{c},
+\mathbf{S},
+\mathbf{G},
+\mathbf{R}_{det}
+\right).
+\end{equation}
+
+The inverse solution is
+
+\begin{equation}
+P(\mathbf{c}\mid\mathbf{F})
+\propto
+P(\mathbf{F}\mid\mathbf{c})
+P(\mathbf{c}).
+\end{equation}
+
+% ============================================================
+\section{Spatial Harmonization of IIRS and CLASS}
+% ============================================================
+
+IIRS and CLASS operate at substantially different spatial scales. Direct pixel-to-pixel comparison is therefore invalid.
+
+For a CLASS footprint $k$, aggregate valid IIRS measurements using uncertainty and quality weights:
+
+\begin{equation}
+\bar{P}_{\mathrm{IIRS},k}
+=
+\frac{
+\sum_i w_i P_i
+}{
+\sum_iw_i
+}.
+\end{equation}
+
+Weights should incorporate:
+
+\begin{equation}
+w_i
+\propto
+\frac{
+q_i
+}{
+\sigma_i^2
+},
+\end{equation}
+
+where $q_i$ is a quality/homogeneity factor.
+
+The aggregation should also test lithological homogeneity. A CLASS footprint containing multiple lithologies should not be treated as a single pure calibration target.
+
+The covariance generated by spatial aggregation must be retained.
+
+% ============================================================
+\section{Multimodal Fusion}
+% ============================================================
+
+\subsection{Bayesian Fusion}
+
+The central fusion equation is
+
+\begin{equation}
+P(\mathbf{c}\mid
+\mathbf{y}_{NIR},
+\mathbf{y}_{XRF})
+\propto
+P(\mathbf{y}_{NIR}\mid\mathbf{c})
+P(\mathbf{y}_{XRF}\mid\mathbf{c})
+P(\mathbf{c}).
+\end{equation}
+
+The NIR likelihood constrains mineralogical and chemical consistency, while the XRF likelihood anchors elemental abundance.
+
+\subsection{Physics-Constrained Neural Fusion}
+
+A neural architecture may define
+
+\begin{equation}
+\mathbf{z}_{NIR}
+=
+f_\theta(R_{IIRS}),
+\end{equation}
+
+\begin{equation}
+\mathbf{z}_{XRF}
+=
+g_\phi(F_{Mg},F_{Al},F_{Si},F_{Ca},F_{Fe}),
+\end{equation}
+
+and
+
+\begin{equation}
+\mathbf{z}
+=
+[
+\mathbf{z}_{NIR},
+\mathbf{z}_{XRF},
+\mathbf{G}
+].
+\end{equation}
+
+The final elemental prediction is
+
+\begin{equation}
+\hat{\mathbf{c}}
+=
+h_\psi(\mathbf{z}).
+\end{equation}
+
+The loss function should contain observational, physical, stoichiometric, and spatial terms:
+
+\begin{equation}
+\mathcal{L}
+=
+\mathcal{L}_{spectral}
++
+\lambda_1\mathcal{L}_{XRF}
++
+\lambda_2\mathcal{L}_{stoich}
++
+\lambda_3\mathcal{L}_{physics}
++
+\lambda_4\mathcal{L}_{spatial}.
+\end{equation}
+
+\subsection{Physical Constraints}
+
+The network should satisfy
+
+\begin{equation}
+f_i\geq0,
+\qquad
+\sum_i f_i=1,
+\end{equation}
+
+and elemental abundances must remain non-negative.
+
+Stoichiometric reconstruction is represented by
+
+\begin{equation}
+\mathbf{c}_{NIR}
+=
+\mathbf{S}\mathbf{f},
+\end{equation}
+
+where $\mathbf{S}$ is the mineral stoichiometry matrix.
+
+The predicted composition should also satisfy geochemical closure within the uncertainty associated with unmodeled volatile/light-element components.
+
+% ============================================================
+\section{Uncertainty Quantification}
+% ============================================================
+
+\subsection{Measurement Uncertainty}
+
+Detector and photon noise should be propagated through the complete calibration chain.
+
+\begin{equation}
+\sigma_{\mathrm{shot}}
+=
+\frac{
+\sqrt{
+N_e+N_{\mathrm{dark}}+RN^2
+}
+}{
+N_e
+}.
+\end{equation}
+
+\subsection{Band-Depth Uncertainty}
+
+For
+
+\begin{equation}
+BD=1-\frac{R_b}{R_c},
+\end{equation}
+
+the variance is
+
+\begin{equation}
+\sigma_{BD}^2
+=
+\frac{\sigma_{R_b}^2}{R_c^2}
++
+\frac{R_b^2\sigma_{R_c}^2}{R_c^4}
+-
+2\frac{R_b}{R_c^3}
+\operatorname{Cov}(R_b,R_c).
+\end{equation}
+
+Correlated calibration errors must therefore not be treated as independent channel noise.
+
+\subsection{Monte Carlo Retrieval}
+
+For final products, use correlated perturbations:
+
+\begin{lstlisting}
+for k = 1 ... N:
+    R_k       = R + correlated_noise(C_R)
+    lambda_k  = lambda + noise(sigma_lambda)
+    anchors_k = perturb_continuum_anchors()
+    Rc_k      = fit_continuum(R_k, anchors_k)
+    params_k  = extract_features(R_k, Rc_k)
+    chem_k    = nonlinear_inversion(params_k, R_k)
+
+report median and 16/84 percentiles
+\end{lstlisting}
+
+At least $N=500$ realizations are recommended for routine retrieval and approximately $N=1000$ for high-value science maps.
+
+\subsection{Three-Level Uncertainty Budget}
+
+Separate:
+
+\begin{enumerate}
+    \item measurement uncertainty;
+    \item retrieval uncertainty;
+    \item geological/model uncertainty.
+\end{enumerate}
+
+This prevents model inadequacy from being incorrectly represented as detector noise.
+
+% ============================================================
+\section{Detection Limits and Quality Flags}
+% ============================================================
+
+A conservative detection threshold is
+
+\begin{equation}
+BD_{\mathrm{lim}}
+=
+3\sigma_{BD,\mathrm{MC}}.
+\end{equation}
+
+If
+
+\begin{equation}
+BD < BD_{\mathrm{lim}},
+\end{equation}
+
+the product should report an upper limit rather than a numerical composition.
+
+Recommended quality flags are:
+
+\begin{itemize}
+    \item \texttt{GOOD};
+    \item \texttt{SNR\_LIMITED};
+    \item \texttt{THERMAL\_CONTAMINATED};
+    \item \texttt{SATURATED};
+    \item \texttt{MIXTURE\_AMBIGUOUS};
+    \item \texttt{DETECTION\_LIMIT};
+    \item \texttt{OUTSIDE\_CALIBRATION}.
+\end{itemize}
+
+% ============================================================
+\section{Laboratory and External Validation}
+% ============================================================
+
+\subsection{Laboratory Spectral Libraries}
+
+Candidate libraries include RELAB, USGS spectral libraries, and HOSERLab measurements.
+
+The laboratory spectra should be transformed into flight-like observations by:
+
+\begin{enumerate}
+    \item spectral convolution to IIRS resolution;
+    \item wavelength-grid resampling;
+    \item noise injection;
+    \item grain-size variation;
+    \item space-weathering variation;
+    \item thermal and photometric perturbation where appropriate.
+\end{enumerate}
+
+The pipeline should then recover the known mineral chemistry within the declared uncertainty.
+
+\subsection{Cross-Instrument Validation}
+
+The validation hierarchy should include:
+
+\begin{enumerate}
+    \item IIRS internal calibration and processing validation;
+    \item M$^3$ spectral overlap;
+    \item laboratory mineral spectra;
+    \item CLASS-XRF elemental products;
+    \item lunar sample geochemistry;
+    \item orbital gamma-ray measurements for independent regional-scale validation;
+    \item independent mineralogical maps.
+\end{enumerate}
+
+\subsection{Blind Spatial Validation}
+
+Random pixel splitting should be avoided because neighboring lunar pixels are spatially correlated.
+
+Instead, use geographically separated training, validation, and test regions:
+
+\begin{lstlisting}
+TRAIN
+  - geological region A
+  - geological region B
+  - geological region C
+
+VALIDATION
+  - independent region D
+
+TEST
+  - geographically separated region E
+\end{lstlisting}
+
+The test region must not participate in calibration or hyperparameter selection.
+
+% ============================================================
+\section{Model Comparison and Ablation Study}
+% ============================================================
+
+The research should benchmark increasingly sophisticated models:
+
+\begin{table}[H]
+\centering
+\caption{Recommended model hierarchy.}
+\begin{tabular}{p{0.35\textwidth}p{0.50\textwidth}}
+\toprule
+Model & Scientific purpose \\
+\midrule
+Band-center regression & Classical spectroscopy baseline \\
+PLSR & Linear statistical baseline \\
+Random Forest / XGBoost & Nonlinear statistical baseline \\
+Linear spectral unmixing & Mineralogical baseline \\
+Hapke/Shkuratov inversion & Physics-based baseline \\
+Shkuratov + ML surrogate & Scalable nonlinear baseline \\
+Physics-constrained neural inversion & Proposed advanced model \\
+IIRS + CLASS multimodal fusion & Final research model \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ablation studies should remove one component at a time:
+
+\begin{itemize}
+    \item no thermal correction;
+    \item no weathering parameter;
+    \item no grain-size parameter;
+    \item linear instead of nonlinear mixing;
+    \item no CLASS information;
+    \item no spatial harmonization;
+    \item no physics constraints.
+\end{itemize}
+
+This demonstrates which methodological components actually improve retrieval accuracy.
+
+% ============================================================
+\section{Closure and Sanity Tests}
+% ============================================================
+
+\subsection{Synthetic Injection-Recovery}
+
+Known absorptions should be injected into representative spectra across SNR values of approximately 10--200.
+
+The retrieval should satisfy:
+
+\begin{equation}
+|\Delta\lambda_c|
+<
+\sigma_{\lambda}
+\end{equation}
+
+and, for statistically significant bands,
+
+\begin{equation}
+\frac{
+|\Delta BD|
+}{
+BD
+}
+<
+10\%.
+\end{equation}
+
+\subsection{Continuum Sensitivity}
+
+Reprocess scenes with:
+
+\begin{itemize}
+    \item convex hull;
+    \item second-order polynomial;
+    \item perturbed anchor points.
+\end{itemize}
+
+If the composition changes by more than the reported uncertainty, the method uncertainty must be inflated.
+
+\subsection{Spatial Closure}
+
+Adjacent orbital observations should agree within combined uncertainty. Track-boundary steps indicate residual calibration or photometric errors.
+
+\subsection{Geochemical Closure}
+
+Reconstructed oxide abundances should satisfy an approximate closure condition,
+
+\begin{equation}
+\sum_i X_i
+=
+100\pm\delta~\mathrm{wt.\%},
+\end{equation}
+
+where $\delta$ explicitly accounts for excluded volatile/light-element components and model uncertainty.
+
+% ============================================================
+\section{Final Data Products}
+% ============================================================
+
+The proposed processing levels are:
+
+\begin{description}
+    \item[L1:] calibrated radiance / $I/F$ with detector, wavelength, and calibration uncertainties;
+    \item[L2:] thermal- and photometrically corrected reflectance plus spectral parameters;
+    \item[L3:] mineralogical retrieval including modal fractions, Mg\#, Fo\#, En\#, Wo\#, FeO proxy, grain size, and maturity posterior;
+    \item[L4:] CLASS-calibrated elemental ratios Mg/Si, Al/Si, Ca/Si, and Fe/Si;
+    \item[L5:] multimodal geochemical maps with posterior uncertainty, detection limits, quality flags, and provenance.
+\end{description}
+
+Every L4/L5 elemental-ratio pixel should contain:
+
+\begin{itemize}
+    \item posterior median;
+    \item $1\sigma$ or 68\% credible interval;
+    \item 95\% credible interval;
+    \item detection limit;
+    \item quality flag;
+    \item calibration version;
+    \item number of Monte Carlo samples;
+    \item continuum method;
+    \item spectral library version;
+    \item CLASS observation/solar-state metadata;
+    \item spatial aggregation footprint;
+    \item validation status.
+\end{itemize}
+
+% ============================================================
+\section{Research Hypothesis and Expected Contribution}
+% ============================================================
+
+The central research hypothesis is:
+
+\begin{quote}
+A physics-constrained multimodal inversion combining high-spatial-resolution lunar NIR spectroscopy with lower-spatial-resolution but compositionally direct XRF measurements can retrieve elemental ratios with lower systematic bias and better quantified uncertainty than either NIR-only empirical regression or CLASS-only interpolation.
+\end{quote}
+
+The principal scientific contribution is therefore not simply an improved regression equation. It is a framework in which:
+
+\begin{equation}
+\boxed{
+\text{IIRS mineralogical information}
++
+\text{CLASS elemental information}
++
+\text{physical forward modeling}
++
+\text{uncertainty-aware fusion}
+}
+\end{equation}
+
+produces spatially resolved and physically interpretable lunar geochemical products.
+
+% ============================================================
+\section{Implementation Blueprint}
+% ============================================================
+
+\begin{lstlisting}
+INPUT
+  IIRS Level-1 radiance
+  CLASS XRF spectra/events
+  SPICE geometry
+  DEM/topography
+  solar-state data
+  laboratory spectral libraries
+
+IIRS PIPELINE
+  detector calibration
+  wavelength calibration
+  bad-pixel masking
+  thermal correction
+  photometric correction
+  standardized reflectance
+
+CLASS PIPELINE
+  energy calibration
+  solar-state screening
+  particle-background subtraction
+  detector-response correction
+  XRF line fitting
+  elemental inversion
+
+SPECTRAL PIPELINE
+  continuum removal
+  band parameters
+  full-spectrum embedding
+  nonlinear spectral unmixing
+  grain-size retrieval
+  space-weathering retrieval
+  mineral chemistry
+
+SPATIAL PIPELINE
+  co-registration
+  IIRS -> CLASS footprint aggregation
+  homogeneity testing
+  covariance propagation
+
+FUSION
+  Bayesian inversion OR
+  physics-constrained neural model
+
+OUTPUT
+  mineral chemistry
+  Mg/Si
+  Al/Si
+  Ca/Si
+  Fe/Si
+  uncertainty posterior
+  detection limits
+  quality flags
+  provenance
+
+VALIDATION
+  laboratory recovery
+  synthetic injection-recovery
+  M3/IIRS comparison
+  CLASS comparison
+  lunar sample comparison
+  independent regional blind test
+  geochemical closure
+\end{lstlisting}
+
+% ============================================================
+\section{Selected Research Literature}
+% ============================================================
+
+\begin{thebibliography}{99}
+
+\bibitem{IIRS2025}
+Recent IIRS Level-2 processing work,
+\emph{Meteoritics \& Planetary Science},
+2025.
+Chandrayaan-2 IIRS radiometric/thermal correction, apparent reflectance,
+standardized geometry, and validation.
+
+\bibitem{ShkuratovML2024}
+Recent study combining the Shkuratov nonlinear mixing model and machine
+learning for large-scale lunar M$^3$ compositional mapping,
+2024.
+The approach explicitly addresses nonlinear mixing, grain size, and optical
+maturity.
+
+\bibitem{CLASS2023}
+Recent CLASS elemental mapping study,
+\emph{Icarus},
+2023.
+Global lunar elemental mapping using Chandrayaan-2 CLASS X-ray fluorescence
+measurements, including Mg, Al, Si, Ca, and Fe.
+
+\bibitem{CLASS2025}
+Recent CLASS XRF elemental-ratio study,
+2025.
+Derivation of lunar O/Si, Mg/Si, Al/Si, Mg/Al, Ca/Si, and Fe/Si from CLASS
+fluorescence measurements.
+
+\bibitem{Moriarty2016}
+Moriarty, D. P., Pieters, C. M., Isaacson, P. J., and others.
+Pyroxene composition and spectral band-center relationships in lunar
+materials.
+\emph{Meteoritics \& Planetary Science},
+2016.
+
+\bibitem{Lucey2000}
+Lucey, P. G., Blewett, D. T., and Jolliff, B. L.
+Lunar iron and titanium abundance algorithms based on final Clementine
+imaging data.
+\emph{Journal of Geophysical Research},
+2000.
+
+\bibitem{Hapke2012}
+Hapke, B.
+\emph{Theory of Reflectance and Emittance Spectroscopy}.
+Cambridge University Press,
+2012.
+
+\bibitem{Adams1974}
+Adams, J. B.
+Visible and near-infrared diffuse reflectance spectra of pyroxenes as
+applied to remote sensing of solid objects in the solar system.
+\emph{Journal of Geophysical Research},
+1974.
+
+\bibitem{Cloutis1990}
+Cloutis, E. A. and Gaffey, M. J.
+Pyroxene spectroscopy and the remote sensing of planetary surfaces.
+Relevant laboratory and compositional calibration studies.
+
+\bibitem{RELAB}
+RELAB Spectral Database.
+Brown University.
+Laboratory reflectance measurements for planetary spectroscopy.
+
+\bibitem{USGS}
+USGS Digital Spectral Library.
+United States Geological Survey.
+Laboratory mineral spectral reference data.
+
+\end{thebibliography}
+
+% ============================================================
+\section*{Methodological Status}
+% ============================================================
+
+
+\end{document}
